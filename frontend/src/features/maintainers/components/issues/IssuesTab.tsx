@@ -6,6 +6,7 @@ import { EmptyIssueState } from './EmptyIssueState';
 import { IssueCard } from '../../../../shared/components/ui/IssueCard';
 import { getProjectIssues } from '../../../../shared/api/client';
 import { formatDistanceToNow } from 'date-fns';
+import { SkeletonLoader } from '../../../../shared/components/SkeletonLoader';
 
 interface Project {
   id: string;
@@ -67,6 +68,7 @@ export function IssuesTab({ onNavigate, selectedProjects, onRefresh }: IssuesTab
   const [issues, setIssues] = useState<Array<IssueFromAPI & { projectName: string; projectId: string }>>([]);
   const [isLoadingIssues, setIsLoadingIssues] = useState(true);
   const [issuesError, setIssuesError] = useState<string | null>(null);
+  const [showInitialLoading, setShowInitialLoading] = useState(true);
   const [showInitialLoading, setShowInitialLoading] = useState(true);
 
   // Helper function to format time ago (memoized)

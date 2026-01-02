@@ -325,16 +325,40 @@ export function DashboardTab({ selectedProjects, onRefresh }: DashboardTabProps)
             }`}>Last activity</h2>
 
             {/* Activity List */}
-            <div className="space-y-3">
-              {activities.map((activity, idx) => (
-                <ActivityItem key={activity.id} activity={activity} index={idx} />
-              ))}
-            </div>
+            {showInitialLoading || isLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, idx) => (
+                  <SkeletonLoader key={idx} className="h-[80px] w-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activities.length === 0 ? (
+                  <div className={`text-center py-8 ${theme === 'dark' ? 'text-[#b8a898]' : 'text-[#7a6b5a]'}`}>
+                    No recent activity found.
+                  </div>
+                ) : (
+                  activities.map((activity, idx) => (
+                    <ActivityItem key={activity.id} activity={activity} index={idx} />
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Applications History */}
-        <ApplicationsChart data={chartData} />
+        <div className={`backdrop-blur-[40px] rounded-[24px] border p-8 relative overflow-hidden group/chart transition-colors ${
+          theme === 'dark'
+            ? 'bg-[#2d2820]/[0.4] border-white/10'
+            : 'bg-white/[0.12] border-white/20'
+        }`}>
+          {showInitialLoading || isLoading ? (
+            <SkeletonLoader className="h-[300px] w-full" />
+          ) : (
+            <ApplicationsChart data={chartData} />
+          )}
+        </div>
       </div>
     </>
   );

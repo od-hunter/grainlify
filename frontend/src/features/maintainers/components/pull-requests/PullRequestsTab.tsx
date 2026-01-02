@@ -5,6 +5,7 @@ import { PRFilterType } from '../../types';
 import { PRRow } from './PRRow';
 import { PRFilterDropdown } from './PRFilterDropdown';
 import { getMyProjects, getProjectPRs } from '../../../../shared/api/client';
+import { SkeletonLoader } from '../../../../shared/components/SkeletonLoader';
 
 interface PRFromAPI {
   github_pr_id: number;
