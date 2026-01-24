@@ -65,6 +65,7 @@ export function Dashboard() {
 
     return localStorage.getItem("dashboardTab") || "discover";
   });
+  const [previousPage, setPreviousPage] = useState<string | null>(null);
 
 
 
@@ -131,16 +132,27 @@ export function Dashboard() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
+        if (currentPage !== 'search') {
+          setPreviousPage(currentPage);
+        }
         setCurrentPage('search');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [currentPage]);
+
+  const openSearch = () => {
+    if (currentPage !== 'search') {
+      setPreviousPage(currentPage);
+    }
+    setCurrentPage('search');
+  };
 
   const handleNavigation = (page: string) => {
     setCurrentPage(page);
+    setPreviousPage(null);
     setSelectedProjectId(null);
     setSelectedIssue(null);
     setSelectedEcosystemId(null);
@@ -347,7 +359,7 @@ export function Dashboard() {
             }`} style={{ width: `calc(100vw - ${isSidebarCollapsed ? '81px' : '240px'} - 8px - 8px)` }}>
             {/* Search - Premium Pill Style */}
             <button
-              onClick={() => setCurrentPage('search')}
+              onClick={openSearch}
               className={`relative h-[46px] flex-1 rounded-[23px] overflow-visible backdrop-blur-[40px] shadow-[0px_6px_6.5px_-1px_rgba(0,0,0,0.36),0px_0px_4.2px_0px_rgba(0,0,0,0.69)] ml-[3px] transition-all hover:scale-[1.01] cursor-pointer ${darkTheme ? 'bg-[#2d2820]' : 'bg-[#d4c5b0]'
                 }`}
             >
@@ -512,18 +524,24 @@ export function Dashboard() {
                 )}
                 {currentPage === 'search' && (
                   <SearchPage
-                    onBack={() => setCurrentPage('discover')}
+                    onBack={() => {
+                      setCurrentPage(previousPage || 'discover');
+                      setPreviousPage(null);
+                    }}
                     onIssueClick={(id) => {
                       setSelectedIssue({ issueId: id });
                       setCurrentPage('discover');
+                      setPreviousPage(null);
                     }}
                     onProjectClick={(id) => {
                       setSelectedProjectId(id);
                       setCurrentPage('discover');
+                      setPreviousPage(null);
                     }}
                     onContributorClick={(id) => {
                       // Navigate to profile page or contributors page with selected contributor
                       setCurrentPage('contributors');
+                      setPreviousPage(null);
                     }}
                   />
                 )}
