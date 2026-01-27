@@ -5,7 +5,7 @@ import {
   Globe, Users, FolderGit2, Trophy, Database, Plus,
   FileText, ChevronRight, Sparkles, Heart,
   Star, GitFork, ArrowUpRight, Target, Zap, ChevronDown,
-  CircleDot, Clock, Moon, Sun, Shield, Code
+  CircleDot, Clock, Moon, Sun, Shield, Code, Menu, X
 } from 'lucide-react';
 import { useAuth } from '../../shared/contexts/AuthContext';
 import grainlifyLogo from '../../assets/grainlify_log.svg';
@@ -50,6 +50,8 @@ export function Dashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeRole, setActiveRole] = useState<'contributor' | 'maintainer' | 'admin'>('contributor');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingUserLogin, setViewingUserLogin] = useState<string | null>(null);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabType>('profile');
@@ -139,6 +141,17 @@ export function Dashboard() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Close mobile menu on page change
   const handleNavigation = (page: string) => {
     setCurrentPage(page);
     setSelectedProjectId(null);
@@ -147,6 +160,9 @@ export function Dashboard() {
     setSelectedEcosystemName(null);
     setSelectedEventId(null);
     setSelectedEventName(null);
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+    }
   };
 
   const handleLogout = () => {
@@ -261,43 +277,62 @@ export function Dashboard() {
           }`} />
       </div>
 
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {isMobile && isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] transition-opacity duration-300"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`fixed top-2 left-2 bottom-2 z-50 transition-all duration-300 ${isSidebarCollapsed ? 'w-[65px] mr-2' : 'w-56 mr-2'}`}>
-        {/* Toggle Arrow Button - positioned at top of sidebar aligned with header */}
-        <button
-          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className={`absolute z-[100] backdrop-blur-[90px] rounded-full border-[0.5px] w-6 h-6 shadow-md hover:shadow-lg transition-all flex items-center justify-center ${isSidebarCollapsed ? '-right-3 top-[60px]' : '-right-3 top-[60px]'
-            } ${darkTheme
-              ? 'bg-[#2d2820]/[0.85] border-[rgba(201,152,58,0.2)]'
-              : 'bg-white/[0.85] border-[rgba(245,239,235,0.32)]'
-            }`}
-        >
-          <ChevronRight
-            className={`w-3 h-3 text-[#c9983a] transition-transform duration-300 ${isSidebarCollapsed ? '' : 'rotate-180'}`}
-          />
-        </button>
+      <aside className={`fixed top-2 bottom-2 z-[101] transition-all duration-300 shadow-2xl lg:shadow-none ${isMobile
+        ? `left-2 w-[280px] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-[110%]'}`
+        : `left-2 ${isSidebarCollapsed ? 'w-[65px]' : 'w-56'}`
+        }`}>
+        {/* Toggle Arrow Button - hidden on mobile */}
+        {!isMobile && (
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className={`absolute z-[100] backdrop-blur-[90px] rounded-full border-[0.5px] w-6 h-6 shadow-md hover:shadow-lg transition-all flex items-center justify-center ${isSidebarCollapsed ? '-right-3 top-[60px]' : '-right-3 top-[60px]'
+              } ${darkTheme
+                ? 'bg-[#2d2820]/[0.85] border-[rgba(201,152,58,0.2)]'
+                : 'bg-white/[0.85] border-[rgba(245,239,235,0.32)]'
+              }`}
+          >
+            <ChevronRight
+              className={`w-3 h-3 text-[#c9983a] transition-transform duration-300 ${isSidebarCollapsed ? '' : 'rotate-180'}`}
+            />
+          </button>
+        )}
 
         <div className={`h-full backdrop-blur-[90px] rounded-[29px] border shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] relative overflow-y-auto scrollbar-hide transition-colors ${darkTheme
           ? 'bg-[#2d2820]/[0.4] border-white/10'
           : 'bg-white/[0.35] border-white/20'
           }`}>
           <div className="flex flex-col h-full px-0 py-[40px]">
-            {/* Logo/Avatar */}
-            <div className={`flex items-center mb-6 transition-all ${isSidebarCollapsed ? 'px-[8px] justify-center' : 'px-2 justify-start'}`}>
-              {isSidebarCollapsed ? (
-                <img src={grainlifyLogo} alt="Grainlify" className="w-12 h-12 grainlify-logo" />
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <img src={grainlifyLogo} alt="Grainlify" className="w-12 h-12 grainlify-logo" />
-                  <span className={`text-[20px] font-bold transition-colors ${darkTheme ? 'text-[#f5efe5]' : 'text-[#2d2820]'
-                    }`}>Grainlify</span>
-                </div>
+            <div className={`flex items-center mb-6 transition-all ${(isSidebarCollapsed && !isMobile) ? 'px-[8px] justify-center' : 'px-4 justify-between lg:justify-start'
+              }`}>
+              <div className="flex items-center space-x-3">
+                <img src={grainlifyLogo} alt="Grainlify" className="w-10 h-10 lg:w-12 lg:h-12 grainlify-logo" />
+                {(!isSidebarCollapsed || isMobile) && (
+                  <span className={`text-[18px] lg:text-[20px] font-bold transition-colors ${darkTheme ? 'text-[#f5efe5]' : 'text-[#2d2820]'}`}>
+                    Grainlify
+                  </span>
+                )}
+              </div>
+              {isMobile && (
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`p-2 rounded-full ${darkTheme ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
+                >
+                  <X className="w-5 h-5 text-[#c9983a]" />
+                </button>
               )}
             </div>
 
-            {/* Divider */}
             <div className="h-[0.5px] opacity-[0.24] mb-6 mx-auto" style={{
-              width: isSidebarCollapsed ? '60px' : '100%',
+              width: (isSidebarCollapsed && !isMobile) ? '60px' : '100%',
               backgroundImage: "url('data:image/svg+xml;utf8,<svg viewBox=\"0 0 104 0.5\" xmlns=\"http://www.w3.org/2000/svg\" preserveAspectRatio=\"none\"><rect x=\"0\" y=\"0\" height=\"100%\" width=\"100%\" fill=\"url(%23grad)\" opacity=\"1\"/><defs><radialGradient id=\"grad\" gradientUnits=\"userSpaceOnUse\" cx=\"0\" cy=\"0\" r=\"10\" gradientTransform=\"matrix(3.1841e-16 0.025 -5.2 1.5308e-18 52 0.25)\"><stop stop-color=\"rgba(67,44,44,1)\" offset=\"0\"/><stop stop-color=\"rgba(80,28,28,0)\" offset=\"1\"/></radialGradient></defs></svg>')"
             }} />
 
@@ -310,18 +345,18 @@ export function Dashboard() {
                   <button
                     key={item.id}
                     onClick={() => handleNavigation(item.id)}
-                    className={`group w-full flex items-center rounded-[12px] transition-all duration-300 ${isSidebarCollapsed ? 'justify-center px-0 h-[49px]' : 'justify-start px-3 py-2.5'
+                    className={`group w-full flex items-center rounded-[12px] transition-all duration-300 ${(isSidebarCollapsed && !isMobile) ? 'justify-center px-0 h-[49px]' : 'justify-start px-3 py-2.5'
                       } ${isActive
                         ? 'bg-[#c9983a] shadow-[inset_0px_0px_4px_0px_rgba(255,255,255,0.25)] border-[0.5px] border-[rgba(245,239,235,0.16)]'
                         : darkTheme
                           ? 'hover:bg-white/[0.08]'
                           : 'hover:bg-white/[0.1]'
                       }`}
-                    title={isSidebarCollapsed ? item.label : ''}
+                    title={(isSidebarCollapsed && !isMobile) ? item.label : ''}
                   >
-                    <Icon className={`w-6 h-6 transition-colors ${isSidebarCollapsed ? '' : 'flex-shrink-0'} ${isActive ? 'text-white' : darkTheme ? 'text-[#e8c77f]' : 'text-[#a2792c]'
+                    <Icon className={`w-6 h-6 transition-colors ${(isSidebarCollapsed && !isMobile) ? '' : 'flex-shrink-0'} ${isActive ? 'text-white' : darkTheme ? 'text-[#e8c77f]' : 'text-[#a2792c]'
                       }`} />
-                    {!isSidebarCollapsed && (
+                    {(!isSidebarCollapsed || isMobile) && (
                       <span className={`ml-3 font-medium text-[14px] ${isActive ? 'text-white' : darkTheme ? 'text-[#d4c5b0]' : 'text-[#6b5d4d]'
                         }`}>
                         {item.label}
@@ -337,14 +372,26 @@ export function Dashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className={`mr-2 my-2 relative z-10 transition-all duration-300 ${isSidebarCollapsed ? 'ml-[81px]' : 'ml-[240px]'}`}>
+      <main className={`mr-2 my-2 relative z-10 transition-all duration-300 ${isMobile ? 'ml-2' : (isSidebarCollapsed ? 'ml-[81px]' : 'ml-[240px]')
+        }`}>
         <div className="max-w-[1400px] mx-auto">
           {/* Premium Pill-Style Header - Greatest of All Time */}
-          <div className={`fixed top-2 right-2 left-auto z-[9999] flex items-center gap-3 h-[52px] py-3 rounded-[26px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] backdrop-blur-[90px] border transition-all duration-300 ${isSidebarCollapsed ? 'ml-[81px]' : 'ml-[240px]'
+          <div className={`fixed top-2 right-2 left-2 lg:left-auto z-[99] flex items-center gap-2 lg:gap-3 h-[52px] py-3 rounded-[26px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] backdrop-blur-[90px] border transition-all duration-300 px-1 border-white/10 ${isMobile ? 'ml-0' : (isSidebarCollapsed ? 'ml-[81px]' : 'ml-[240px]')
             } ${darkTheme
               ? 'bg-[#2d2820]/[0.4] border-white/10 shadow-[inset_0px_0px_9px_0px_rgba(201,152,58,0.1)]'
               : 'bg-white/[0.35] border-white shadow-[inset_0px_0px_9px_0px_rgba(255,255,255,0.5)]'
-            }`} style={{ width: `calc(100vw - ${isSidebarCollapsed ? '81px' : '240px'} - 8px - 8px)` }}>
+            }`} style={{ width: isMobile ? 'calc(100vw - 16px)' : `calc(100vw - ${isSidebarCollapsed ? '81px' : '240px'} - 8px - 8px)` }}>
+            {/* Mobile Menu Toggle */}
+            {isMobile && (
+              <button
+                onClick={() => setIsMobileMenuOpen(true)}
+                className={`h-[42px] w-[42px] rounded-full flex items-center justify-center backdrop-blur-[40px] transition-all active:scale-95 shadow-md ${darkTheme ? 'bg-[#2d2820]' : 'bg-[#d4c5b0]'
+                  }`}
+              >
+                <Menu className={`w-5 h-5 ${darkTheme ? 'text-[#e8c77f]' : 'text-[#a2792c]'}`} />
+              </button>
+            )}
+
             {/* Search - Premium Pill Style */}
             <button
               onClick={() => setCurrentPage('search')}
