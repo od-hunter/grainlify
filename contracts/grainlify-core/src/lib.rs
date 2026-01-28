@@ -157,7 +157,11 @@
 #![no_std]
 
 mod multisig;
+mod governance;
 use multisig::MultiSig;
+pub use governance::{
+    Error as GovError, Proposal, ProposalStatus, VoteType, VotingScheme, GovernanceConfig, Vote
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec, String,
 };
@@ -518,6 +522,15 @@ impl GrainlifyContract {
 
         MultiSig::init(&env, signers, threshold);
         env.storage().instance().set(&DataKey::Version, &VERSION);
+    }
+
+    /// Initialize governance system
+    pub fn init_governance(
+        env: Env,
+        admin: Address,
+        config: governance::GovernanceConfig,
+    ) -> Result<(), governance::Error> {
+        governance::GovernanceContract::init_governance(&env, admin, config)
     }
 
     /// Initializes the contract with a single admin address.
