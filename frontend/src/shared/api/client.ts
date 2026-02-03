@@ -229,6 +229,7 @@ export const getUserProfile = () =>
     rewards_count: number;
     languages: Array<{ language: string; contribution_count: number }>;
     ecosystems: Array<{ ecosystem_name: string; contribution_count: number }>;
+    kyc_verified?: boolean;
     rank: {
       position: number | null;
       tier: string;
@@ -334,6 +335,7 @@ export const getPublicProfile = (userId?: string, login?: string) => {
     whatsapp?: string;
     twitter?: string;
     discord?: string;
+    kyc_verified?: boolean;
     rank: {
       position: number | null;
       tier: string;

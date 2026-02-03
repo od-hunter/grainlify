@@ -22,6 +22,7 @@ interface ProfileData {
   whatsapp?: string;
   twitter?: string;
   discord?: string;
+   kyc_verified?: boolean;
   rank: {
     position: number | null;
     tier: string;
@@ -432,6 +433,26 @@ export function ProfilePage({ viewingUserId, viewingUserLogin, onBack, onProject
               {/* Social Media Links - Show all icons, dimmed if no link */}
               {!isLoadingProfile && (
                 <div className="flex items-center gap-3 flex-wrap mb-4">
+                  {/* GitHub - always enabled */}
+                  <a
+                    href={`https://github.com/${viewingUser?.login || user?.github?.login || ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-8 h-8 rounded-full bg-gradient-to-br from-[#c9983a]/30 to-[#d4af37]/20 border-2 border-[#c9983a]/50 flex items-center justify-center hover:scale-110 hover:shadow-[0_4px_12px_rgba(201,152,58,0.4)] transition-all duration-300"
+                    title="GitHub"
+                  >
+                    <Github className="w-4 h-4 text-[#c9983a]" />
+                  </a>
+
+                  {/* KYC verified badge (only when verified) */}
+                  {profileData?.kyc_verified && (
+                    <div
+                      className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4ade80]/30 to-[#16a34a]/30 border-2 border-[#22c55e]/60 flex items-center justify-center shadow-[0_4px_12px_rgba(34,197,94,0.5)]"
+                      title="KYC verified"
+                    >
+                      <Shield className="w-4 h-4 text-[#16a34a]" />
+                    </div>
+                  )}
                   {/* Telegram */}
                   {profileData?.telegram ? (
                     <a
@@ -1403,7 +1424,8 @@ export function ProfilePage({ viewingUserId, viewingUserLogin, onBack, onProject
         onClose={() => setContributorModalOpen(false)}
         title="Projects contributed to"
         icon={<Users className="w-5 h-5 text-[#c9983a]" />}
-        width="md"
+        width="sm"
+        dimBackdrop={false}
       >
         <div className={`max-h-[60vh] overflow-y-auto space-y-2 ${theme === 'dark' ? 'text-[#e8dfd0]' : 'text-[#2d2820]'}`}>
           {projects.length === 0 ? (
@@ -1442,7 +1464,8 @@ export function ProfilePage({ viewingUserId, viewingUserLogin, onBack, onProject
         onClose={() => setLeadModalOpen(false)}
         title="Projects led"
         icon={<Star className="w-5 h-5 text-[#c9983a] fill-[#c9983a]" />}
-        width="md"
+        width="sm"
+        dimBackdrop={false}
       >
         <div className={`max-h-[60vh] overflow-y-auto space-y-2 ${theme === 'dark' ? 'text-[#e8dfd0]' : 'text-[#2d2820]'}`}>
           {isLoadingProjectsLed ? (
