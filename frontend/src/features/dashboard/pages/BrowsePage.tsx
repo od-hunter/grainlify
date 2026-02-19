@@ -30,7 +30,8 @@ const formatNumber = (num: number): string => {
 // Helper function to get project icon/avatar
 const getProjectIcon = (githubFullName: string): string => {
   const [owner] = githubFullName.split("/");
-  return `https://github.com/${owner}.png?size=40`;
+  // Use higher‑resolution owner avatar so cards look crisp
+  return `https://github.com/${owner}.png?size=200`;
 };
 
 // Helper function to get gradient color based on project name
@@ -265,57 +266,6 @@ export function BrowsePage({ onProjectClick }: BrowsePageProps) {
           console.error('BrowsePage: Failed to fetch projects:', err);
           throw err; // Re-throw to let the hook handle the error
         }
-        if (selectedFilters.ecosystems.length > 0) {
-          params.ecosystem = selectedFilters.ecosystems[0]; // API supports single ecosystem
-        }
-        if (selectedFilters.categories.length > 0) {
-          params.category = selectedFilters.categories[0]; // API supports single category
-        }
-        if (selectedFilters.tags.length > 0) {
-          params.tags = selectedFilters.tags.join(','); // API supports comma-separated tags
-        }
-
-        const response = await getPublicProjects(params);
-
-        console.log('BrowsePage: API response received', { response });
-
-        // Handle response - check if it's valid
-        let projectsArray: any[] = [];
-        if (response && response.projects && Array.isArray(response.projects)) {
-          projectsArray = response.projects;
-        } else if (Array.isArray(response)) {
-          // Handle case where API returns array directly
-          projectsArray = response;
-        } else {
-          console.warn('BrowsePage: Unexpected response format', response);
-          projectsArray = [];
-        }
-
-        // Map API response to Project interface
-        const mappedProjects: Project[] = projectsArray
-          .filter(isValidProject)
-          .map((p) => {
-            const repoName = getRepoName(p.github_full_name);
-            return {
-              id: p.id || `project-${Date.now()}-${Math.random()}`, // Fallback ID if missing
-              name: repoName,
-              icon: getProjectIcon(p.github_full_name),
-              stars: formatNumber(p.stars_count || 0),
-              forks: formatNumber(p.forks_count || 0),
-              contributors: p.contributors_count || 0,
-              openIssues: p.open_issues_count || 0,
-              prs: p.open_prs_count || 0,
-              description: truncateDescription(p.description) || `${p.language || 'Project'} repository${p.category ? ` - ${p.category}` : ''}`,
-              tags: Array.isArray(p.tags) ? p.tags : [],
-              color: getProjectColor(repoName),
-            };
-          });
-
-        console.log('BrowsePage: Mapped projects', { count: mappedProjects.length });
-        setProjects(mappedProjects);
-        setIsLoading(false);
-        setHasError(false);
-        return mappedProjects;
       });
     };
 
@@ -374,7 +324,7 @@ export function BrowsePage({ onProjectClick }: BrowsePageProps) {
 
       {/* Projects Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
           {[...Array(8)].map((_, idx) => (
             <ProjectCardSkeleton key={idx} />
           ))}
@@ -393,7 +343,7 @@ export function BrowsePage({ onProjectClick }: BrowsePageProps) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
           {projects.map((project) => (
             <ProjectCard
               key={project.id}

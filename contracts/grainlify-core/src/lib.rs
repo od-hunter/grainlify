@@ -157,7 +157,11 @@
 #![no_std]
 
 mod multisig;
+mod governance;
 use multisig::MultiSig;
+pub use governance::{
+    Error as GovError, Proposal, ProposalStatus, VoteType, VotingScheme, GovernanceConfig, Vote
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec, String,
 };
@@ -518,6 +522,15 @@ impl GrainlifyContract {
 
         MultiSig::init(&env, signers, threshold);
         env.storage().instance().set(&DataKey::Version, &VERSION);
+    }
+
+    /// Initialize governance system
+    pub fn init_governance(
+        env: Env,
+        admin: Address,
+        config: governance::GovernanceConfig,
+    ) -> Result<(), governance::Error> {
+        governance::GovernanceContract::init_governance(env, admin, config)
     }
 
     /// Initializes the contract with a single admin address.
@@ -1137,6 +1150,7 @@ fn migrate_v2_to_v3(_env: &Env) {
 mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::testutils::Events;
 
     #[test]
     fn multisig_init_works() {
@@ -1179,7 +1193,7 @@ mod test {
         client.init_admin(&admin);
 
         // Initial version should be 1
-        assert_eq!(client.get_version(), 1);
+        assert_eq!(client.get_version(), 2);
 
         // Create migration hash
         let migration_hash = BytesN::from_array(&env, &[0u8; 32]);
