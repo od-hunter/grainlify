@@ -1215,3 +1215,114 @@ fn test_claim_does_not_affect_other_schedules() {
     let remaining = contract.get_remaining_balance(&env, program_id);
     assert_eq!(remaining, 90_000_000_000);
 }
+
+// ============================================================================
+// ANTI-ABUSE TESTS FOR PROGRAM ESCROW
+// ============================================================================
+
+#[test]
+fn test_anti_abuse_rate_limit_exceeded() {
+    let env = Env::default();
+    let (contract, admin, _, _) = setup_program(&env);
+
+    let config = contract.get_rate_limit_config(&env);
+    let max_ops = config.max_operations;
+    let recipient = Address::generate(&env);
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    env.ledger().set_timestamp(start_time);
+
+    contract.lock_program_funds(&env, 100_000_000_000); // Admin does not bypass as it's not whitelisted by default
+    // We expect max_ops within the window_size (default 3600 seconds)
+    
+    // We already used 1 operation with lock_program_funds, so we can do max_ops - 1 more
+    // Make sure we space them out just enough to bypass the cooldown (default 60 seconds)
+    for i in 1..max_ops {
+        env.ledger().set_timestamp(start_time + config.cooldown_period * (i as u64) + 1);
+        env.as_contract(&contract, || {
+            env.set_invoker(&admin);
+            contract.single_payout(&env, recipient.clone(), 100);
+        });
+    }
+
+    // Now we must be EXACTLY at the limit. The next call should fail.
+    env.ledger().set_timestamp(start_time + config.cooldown_period * (max_ops as u64) + 1);
+    
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env.as_contract(&contract, || {
+            env.set_invoker(&admin);
+            contract.single_payout(&env, recipient.clone(), 100);
+        });
+    }));
+    
+    assert!(result.is_err(), "Expected rate limit panic");
+}
+
+#[test]
+fn test_anti_abuse_cooldown_violation() {
+    let env = Env::default();
+    let (contract, admin, _, _) = setup_program(&env);
+
+    let config = contract.get_rate_limit_config(&env);
+    let recipient = Address::generate(&env);
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    env.ledger().set_timestamp(start_time);
+
+    contract.lock_program_funds(&env, 100_000_000_000);
+
+    // Provide a valid timestamp just after the cooldown period
+    env.ledger().set_timestamp(start_time + config.cooldown_period + 1);
+    
+    env.as_contract(&contract, || {
+        env.set_invoker(&admin);
+        contract.single_payout(&env, recipient.clone(), 100);
+    });
+
+    // Calling again *immediately* (same timestamp) should trigger a cooldown violation.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env.as_contract(&contract, || {
+            env.set_invoker(&admin);
+            contract.single_payout(&env, recipient.clone(), 100);
+        });
+    }));
+    
+    assert!(result.is_err(), "Expected cooldown violation panic");
+}
+
+#[test]
+fn test_anti_abuse_whitelist_bypass() {
+    let env = Env::default();
+    let (contract, admin, _, _) = setup_program(&env);
+
+    let config = contract.get_rate_limit_config(&env);
+    let max_ops = config.max_operations;
+    let recipient = Address::generate(&env);
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    env.ledger().set_timestamp(start_time);
+
+    contract.lock_program_funds(&env, 100_000_000_000);
+
+    // Add admin to whitelist
+    contract.set_whitelist(&env, admin.clone(), true);
+
+    // Provide a valid timestamp just after the cooldown period
+    env.ledger().set_timestamp(start_time + config.cooldown_period + 1);
+    
+    // We should be able to do theoretically unlimited operations at the exact same timestamp
+    // We'll do `max_ops + 5` to prove it bypasses both cooldown (same timestamp) and rate limit (more than max_ops)
+    for _ in 0..(max_ops + 5) {
+        env.as_contract(&contract, || {
+            env.set_invoker(&admin);
+            contract.single_payout(&env, recipient.clone(), 100);
+        });
+    }
+
+    // Verify successful payouts
+    let info = contract.get_program_info(&env);
+    assert_eq!(info.payout_history.len() as u32, max_ops + 5);
+}

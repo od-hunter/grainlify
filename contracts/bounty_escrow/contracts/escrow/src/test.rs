@@ -1,4 +1,4 @@
-#![cfg(test)]
+#![no_std]
 
 use super::*;
 use soroban_sdk::{
@@ -1518,4 +1518,130 @@ fn test_claim_does_not_affect_other_bounties() {
     // Bounty 2 can still be released normally
     setup.escrow.release_funds(&2, &contributor2);
     assert_eq!(setup.token.balance(&contributor2), 2000);
+}
+
+// ============================================================================
+// ANTI-ABUSE TESTS FOR BOUNTY ESCROW
+// ============================================================================
+
+#[test]
+#[should_panic(expected = "Rate limit exceeded")]
+fn test_bounty_anti_abuse_rate_limit_exceeded() {
+    let setup = TestSetup::new();
+    let bounty_id = 999;
+    let amount = 1000;
+
+    let config = setup.escrow.get_config();
+    let max_ops = config.max_operations;
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    setup.env.ledger().set_timestamp(start_time);
+
+    let deadline = start_time + 1000;
+
+    // We expect max_ops within the window_size
+
+    for i in 0..max_ops {
+        setup
+            .env
+            .ledger()
+            .set_timestamp(start_time + config.cooldown_period * (i as u64) + 1);
+
+        setup.escrow.lock_funds(
+            &setup.depositor,
+            &(bounty_id + i as u64),
+            &amount,
+            &deadline,
+        );
+    }
+
+    setup
+        .env
+        .ledger()
+        .set_timestamp(start_time + config.cooldown_period * (max_ops as u64) + 1);
+
+    setup.escrow.lock_funds(
+        &setup.depositor,
+        &(bounty_id + max_ops as u64),
+        &amount,
+        &deadline,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Operation in cooldown period")]
+fn test_bounty_anti_abuse_cooldown_violation() {
+    let setup = TestSetup::new();
+    let bounty_id = 2999;
+    let amount = 1000;
+
+    let config = setup.escrow.get_config();
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    setup.env.ledger().set_timestamp(start_time);
+
+    let deadline = start_time + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+
+    setup
+        .env
+        .ledger()
+        .set_timestamp(start_time + config.cooldown_period + 1);
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &(bounty_id + 1), &amount, &deadline);
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &(bounty_id + 2), &amount, &deadline);
+}
+
+#[test]
+fn test_bounty_anti_abuse_whitelist_bypass() {
+    let setup = TestSetup::new();
+    let bounty_id = 3999;
+    let amount = 10;
+
+    let config = setup.escrow.get_config();
+    let max_ops = config.max_operations;
+
+    // Initial time setup
+    let start_time = 1_000_000;
+    setup.env.ledger().set_timestamp(start_time);
+
+    let deadline = start_time + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+
+    // Add depositor to whitelist
+    setup.escrow.set_whitelist(&setup.depositor, &true);
+
+    setup
+        .env
+        .ledger()
+        .set_timestamp(start_time + config.cooldown_period + 1);
+
+    // We should be able to do theoretically unlimited operations at the exact same timestamp
+    for i in 1..=(max_ops + 5) {
+        setup.escrow.lock_funds(
+            &setup.depositor,
+            &(bounty_id + i as u64),
+            &amount,
+            &deadline,
+        );
+    }
+
+    // Verify successful locking
+    let escrow = setup
+        .escrow
+        .get_escrow_info(&(bounty_id + max_ops as u64 + 5));
+    assert_eq!(escrow.amount, amount);
 }
