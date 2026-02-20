@@ -18,20 +18,29 @@ interface Project {
 
 interface DashboardTabProps {
   selectedProjects: Project[];
+  /** When true, parent is still loading the project list; show loading skeleton instead of empty state */
+  isLoadingProjects?: boolean;
   onRefresh?: () => void;
   onNavigateToIssue?: (issueId: string, projectId: string) => void;
 }
 
-export function DashboardTab({ selectedProjects, onRefresh, onNavigateToIssue }: DashboardTabProps) {
+export function DashboardTab({ selectedProjects, isLoadingProjects = false, onRefresh, onNavigateToIssue }: DashboardTabProps) {
   const { theme } = useTheme();
   const [issues, setIssues] = useState<any[]>([]);
   const [prs, setPrs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAllActivities, setShowAllActivities] = useState(false);
 
-  // Fetch data from selected projects
+  // Show loading when parent is loading projects OR when we're loading dashboard data
+  const showLoading = isLoadingProjects || isLoading;
+
+  // Fetch data from selected projects (only when parent has finished loading and we have projects)
   useEffect(() => {
+    if (isLoadingProjects) return;
     loadData();
-  }, [selectedProjects]);
+    // Reset expanded state when projects change
+    setShowAllActivities(false);
+  }, [selectedProjects, isLoadingProjects]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -262,7 +271,7 @@ export function DashboardTab({ selectedProjects, onRefresh, onNavigateToIssue }:
       return timeB - timeA;
     });
 
-    return combined.slice(0, 5); // Top 5 most recent
+    return combined; // Return all activities (will be sliced in render based on state)
   }, [issues, prs, formatTimeAgo, parseTimeAgo]);
 
   // Generate chart data from real data (last 6 months)
@@ -298,7 +307,7 @@ export function DashboardTab({ selectedProjects, onRefresh, onNavigateToIssue }:
     <>
       {/* Stats Cards */}
       <div className="grid grid-cols-5 gap-5">
-        {isLoading ? (
+        {showLoading ? (
           [...Array(5)].map((_, idx) => (
             <StatsCardSkeleton key={idx} />
           ))
@@ -324,33 +333,48 @@ export function DashboardTab({ selectedProjects, onRefresh, onNavigateToIssue }:
               }`}>Last activity</h2>
 
             {/* Activity List */}
-            {isLoading ? (
+            {showLoading ? (
               <div className="space-y-3">
                 {[...Array(5)].map((_, idx) => (
                   <ActivityItemSkeleton key={idx} />
                 ))}
               </div>
             ) : (
-              <div className="space-y-3">
-                {activities.length === 0 ? (
-                  <div className={`text-center py-8 ${theme === 'dark' ? 'text-[#b8a898]' : 'text-[#7a6b5a]'}`}>
-                    No recent activity found.
+              <>
+                <div className="space-y-3">
+                  {activities.length === 0 ? (
+                    <div className={`text-center py-8 ${theme === 'dark' ? 'text-[#b8a898]' : 'text-[#7a6b5a]'}`}>
+                      No recent activity found.
+                    </div>
+                  ) : (
+                    (showAllActivities ? activities : activities.slice(0, 5)).map((activity, idx) => (
+                      <ActivityItem
+                        key={activity.id}
+                        activity={activity}
+                        index={idx}
+                        onClick={() => {
+                          if (activity.type === 'issue' && activity.projectId && onNavigateToIssue) {
+                            onNavigateToIssue(activity.id.toString(), activity.projectId);
+                          }
+                        }}
+                      />
+                    ))
+                  )}
+                </div>
+                {/* View More / Show Less Button */}
+                {activities.length > 5 && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => setShowAllActivities(!showAllActivities)}
+                      className={`px-6 py-2.5 rounded-[10px] backdrop-blur-[25px] bg-gradient-to-br from-[#c9983a]/25 to-[#d4af37]/20 border border-[#c9983a]/40 text-[13px] font-semibold text-[#c9983a] hover:from-[#c9983a]/35 hover:to-[#d4af37]/30 hover:scale-105 transition-all duration-200 ${
+                        theme === 'dark' ? 'hover:border-[#c9983a]/60' : 'hover:border-[#c9983a]/50'
+                      }`}
+                    >
+                      {showAllActivities ? 'Show less' : 'View more'}
+                    </button>
                   </div>
-                ) : (
-                  activities.map((activity, idx) => (
-                    <ActivityItem
-                      key={activity.id}
-                      activity={activity}
-                      index={idx}
-                      onClick={() => {
-                        if (activity.type === 'issue' && activity.projectId && onNavigateToIssue) {
-                          onNavigateToIssue(activity.id.toString(), activity.projectId);
-                        }
-                      }}
-                    />
-                  ))
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -360,7 +384,7 @@ export function DashboardTab({ selectedProjects, onRefresh, onNavigateToIssue }:
           ? 'bg-[#2d2820]/[0.4] border-white/10'
           : 'bg-white/[0.12] border-white/20'
           }`}>
-          {isLoading ? (
+          {showLoading ? (
             <ChartSkeleton />
           ) : (
             <ApplicationsChart data={chartData} />
