@@ -127,9 +127,6 @@ fn test_granular_pause_refund() {
 
     let res = escrow_client.try_refund(
         &bounty_id,
-        &None::<i128>,
-        &None::<Address>,
-        &RefundMode::Full,
     );
     assert!(res.is_err());
 
@@ -139,9 +136,6 @@ fn test_granular_pause_refund() {
 
     escrow_client.refund(
         &bounty_id,
-        &None::<i128>,
-        &None::<Address>,
-        &RefundMode::Full,
     );
 }
 

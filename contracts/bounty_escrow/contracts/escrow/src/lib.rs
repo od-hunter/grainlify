@@ -238,7 +238,7 @@ mod anti_abuse {
             .get(&AntiAbuseKey::Config)
             .unwrap_or(AntiAbuseConfig {
                 window_size: 3600, // 1 hour default
-                max_operations: 10,
+                max_operations: 100,
                 cooldown_period: 60, // 1 minute default
             })
     }
@@ -959,6 +959,9 @@ impl BountyEscrowContract {
                 timestamp: env.ledger().timestamp(),
             },
         );
+
+        // Clear reentrancy guard
+        env.storage().instance().remove(&DataKey::ReentrancyGuard);
 
         Ok(())
     }
