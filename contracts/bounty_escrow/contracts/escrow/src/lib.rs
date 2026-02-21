@@ -1,4 +1,7 @@
 #![no_std]
+
+#[cfg(test)] 
+mod test_metadata;
 mod events;
 
 mod test_bounty_escrow;
@@ -370,6 +373,14 @@ pub enum Error {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowMetadata {
+    pub repo_id: u64,
+    pub issue_id: u64,
+    pub bounty_type: soroban_sdk::String,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EscrowStatus {
     Locked,
     Released,
@@ -396,6 +407,7 @@ pub enum DataKey {
     Admin,
     Token,
     Escrow(u64),             // bounty_id
+    Metadata(u64),
     EscrowIndex,             // Vec<u64> of all bounty_ids
     DepositorIndex(Address), // Vec<u64> of bounty_ids by depositor
     FeeConfig,               // Fee configuration
@@ -1281,6 +1293,7 @@ impl BountyEscrowContract {
         emit_funds_released(
             &env,
             FundsReleased {
+                version: EVENT_VERSION_V2,
                 bounty_id,
                 amount: payout_amount,
                 recipient: contributor.clone(),
@@ -1949,6 +1962,19 @@ impl BountyEscrowContract {
 
         Ok(released_count)
     }
+pub fn update_metadata(env: Env, _admin: Address, bounty_id: u64, repo_id: u64, issue_id: u64, bounty_type: soroban_sdk::String) -> Result<(), Error> {
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        stored_admin.require_auth();
+        
+        let metadata = EscrowMetadata { repo_id, issue_id, bounty_type };
+        env.storage().persistent().set(&DataKey::Metadata(bounty_id), &metadata);
+        Ok(())
+    }
+
+    pub fn get_metadata(env: Env, bounty_id: u64) -> Result<EscrowMetadata, Error> {
+        env.storage().persistent().get(&DataKey::Metadata(bounty_id)).ok_or(Error::BountyNotFound)
+    }
+
 }
 
 #[cfg(test)]
