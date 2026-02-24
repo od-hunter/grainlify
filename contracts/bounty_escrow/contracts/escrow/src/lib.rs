@@ -2173,3 +2173,5 @@ mod test_metadata_tagging;
 mod test_pause;
 #[cfg(test)]
 mod test_query_filters;
+#[cfg(test)]
+mod test_status_transitions;
