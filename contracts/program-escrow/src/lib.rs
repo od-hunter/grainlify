@@ -139,9 +139,6 @@
 //! 5. **Balance Checks**: Verify remaining balance matches expectations
 //! 6. **Token Approval**: Ensure contract has token allowance before locking funds
 
-// ── Step 1: Add module declarations near the top of lib.rs ──────────────
-// (after `mod anti_abuse;` and before the contract struct)
-
 mod error_recovery;
 mod reentrancy_guard;
 
@@ -166,13 +163,6 @@ mod test_granular_pause;
 #[cfg(test)]
 #[cfg(any())]
 mod test_lifecycle;
-
-// ── Step 2: Add these public contract functions to the ProgramEscrowContract
-//    impl block (alongside the existing admin functions) ──────────────────
-
-// ========================================================================
-// Circuit Breaker Management
-// ========================================================================
 
 /// Register the circuit breaker admin. Can only be set once, or changed
 /// by the existing admin.
@@ -256,46 +246,6 @@ pub fn emergency_open_circuit(env: Env, admin: Address) {
     }
     error_recovery::open_circuit(&env);
 }
-
-// ── Step 3: Wrap batch_payout and single_payout with circuit breaker ────
-//
-// In the existing batch_payout function, add at the very top (after getting
-// program_data but before the auth check):
-//
-//   use crate::error_recovery;
-//   if let Err(_) = error_recovery::check_and_allow(&env) {
-//       panic!("Circuit breaker is open: payout operations are temporarily disabled");
-//   }
-//
-// After a successful transfer loop, add:
-//   error_recovery::record_success(&env);
-//
-// If a transfer panics/fails, the circuit breaker failure should be recorded
-// via record_failure() before re-panicking.
-//
-// For a clean integration, wrap the token transfer call like this:
-//
-//   let transfer_ok = std::panic::catch_unwind(|| {
-//       token_client.transfer(&contract_address, &recipient.clone(), &net_amount);
-//   });
-//   match transfer_ok {
-//       Ok(_) => error_recovery::record_success(&env),
-//       Err(_) => {
-//           error_recovery::record_failure(
-//               &env,
-//               program_id.clone(),
-//               soroban_sdk::symbol_short!("batch_pay"),
-//               error_recovery::ERR_TRANSFER_FAILED,
-//           );
-//           panic!("Token transfer failed");
-//       }
-//   }
-//
-// Note: Soroban's environment panics abort the transaction, so in practice
-// you record the failure and re-panic. The circuit breaker state is committed
-// because Soroban persists storage writes made before the panic in tests
-// (but not in production transactions that abort). For full production
-// integration, use the `try_*` variants of client calls where available.
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, vec, Address, Env,

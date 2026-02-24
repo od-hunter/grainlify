@@ -21,7 +21,6 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-// ==================== MONITORING MODULE ====================
 mod monitoring {
     use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
@@ -217,9 +216,7 @@ mod monitoring {
         }
     }
 }
-// ==================== END MONITORING MODULE ====================
 
-// ==================== ANTI-ABUSE MODULE ====================
 mod anti_abuse {
     use soroban_sdk::{contracttype, symbol_short, Address, Env};
 
@@ -351,9 +348,7 @@ mod anti_abuse {
         env.storage().persistent().extend_ttl(&key, 17280, 17280);
     }
 }
-// ==================== END ANTI-ABUSE MODULE ====================
 
-// ==================== CONSTANTS ====================
 #[allow(dead_code)]
 const BASIS_POINTS: i128 = 10_000;
 const MAX_FEE_RATE: i128 = 5_000; // 50% max fee
@@ -2224,8 +2219,6 @@ impl BountyEscrowContract {
     }
 }
 
-// ==================== TRAIT IMPLEMENTATIONS ====================
-// Implement the EscrowInterface trait for cross-contract compatibility (Issue #483)
 impl traits::EscrowInterface for BountyEscrowContract {
     /// Lock funds for a bounty through the trait interface
     fn lock_funds(
@@ -2259,7 +2252,6 @@ impl traits::EscrowInterface for BountyEscrowContract {
     }
 }
 
-// Implement the UpgradeInterface trait for version compatibility
 impl traits::UpgradeInterface for BountyEscrowContract {
     /// Get contract version
     fn get_version(env: &Env) -> u32 {
@@ -2273,7 +2265,6 @@ impl traits::UpgradeInterface for BountyEscrowContract {
         Ok(())
     }
 }
-// ==================== END TRAIT IMPLEMENTATIONS ====================
 
 #[cfg(test)]
 mod test;
@@ -2300,6 +2291,8 @@ mod test_metadata_tagging;
 mod test_partial_payout_rounding;
 #[cfg(test)]
 mod test_pause;
+#[cfg(test)]
+mod test_blacklist_and_whitelist;
 #[cfg(test)]
 mod escrow_status_transition_tests {
     use super::*;
