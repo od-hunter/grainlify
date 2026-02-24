@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::invariants;
-use soroban_sdk::{testutils::Address as _, token, Address, Env};
 use crate::RefundMode;
+use soroban_sdk::{testutils::Address as _, token, Address, Env};
 
 fn setup_bounty(env: &Env) -> (BountyEscrowContractClient<'static>, Address, Address) {
     env.mock_all_auths();
