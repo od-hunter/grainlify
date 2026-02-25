@@ -858,10 +858,6 @@ impl BountyEscrowContract {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
-        // Validate and increment nonce to prevent replay
-        nonce::validate_and_increment_nonce(&env, &admin, nonce)
-            .map_err(|_| Error::InvalidNonce)?;
-
         let mut flags = Self::get_pause_flags(&env);
         let timestamp = env.ledger().timestamp();
 
