@@ -33,11 +33,11 @@ pub fn validate_and_increment_nonce(
     provided_nonce: u64,
 ) -> Result<(), NonceError> {
     let current_nonce = get_nonce(env, signer);
-    
+
     if provided_nonce != current_nonce {
         return Err(NonceError::InvalidNonce);
     }
-    
+
     let key = NonceKey::Signer(signer.clone());
     env.storage().persistent().set(&key, &(current_nonce + 1));
     Ok(())
@@ -51,11 +51,11 @@ pub fn validate_and_increment_nonce_with_domain(
     provided_nonce: u64,
 ) -> Result<(), NonceError> {
     let current_nonce = get_nonce_with_domain(env, signer, domain.clone());
-    
+
     if provided_nonce != current_nonce {
         return Err(NonceError::InvalidNonce);
     }
-    
+
     let key = NonceKey::SignerWithDomain(signer.clone(), domain);
     env.storage().persistent().set(&key, &(current_nonce + 1));
     Ok(())

@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, xdr::ScAddress, Address, Env};
+use soroban_sdk::{contracterror, Address, Env};
 
 pub type AssetId = Address;
 
@@ -20,11 +20,17 @@ pub fn normalize_asset_id(env: &Env, raw_asset_id: &Address) -> Result<AssetId, 
 /// For token operations, asset ids must be Soroban contract addresses.
 pub fn validate_asset_id(env: &Env, asset_id: &AssetId) -> Result<(), AssetIdError> {
     let _ = env;
-    let sc_address = ScAddress::from(asset_id);
+    let strkey = asset_id.to_string();
+    if strkey.len() != 56 {
+        return Err(AssetIdError::MustBeContractAddress);
+    }
 
-    match sc_address {
-        ScAddress::Contract(_) => Ok(()),
-        _ => Err(AssetIdError::MustBeContractAddress),
+    let mut bytes = [0u8; 56];
+    strkey.copy_into_slice(&mut bytes);
+    if bytes[0] == b'C' {
+        Ok(())
+    } else {
+        Err(AssetIdError::MustBeContractAddress)
     }
 }
 
