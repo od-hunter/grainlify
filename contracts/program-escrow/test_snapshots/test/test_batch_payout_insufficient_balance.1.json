@@ -445,6 +445,25 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "DependencyStatus"
+                            },
+                            {
+                              "string": "Test"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "Pending"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Program"
                             },
                             {
@@ -509,6 +528,21 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ProgramDependencies"
+                            },
+                            {
+                              "string": "Test"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
                         }
                       }
                     ]
@@ -1243,7 +1277,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Insufficient balance: requested 100000000000, available 50000000000' from contract function 'Symbol(obj#311)'"
+                  "string": "caught panic 'Insufficient balance: requested 100000000000, available 50000000000' from contract function 'Symbol(obj#339)'"
                 },
                 {
                   "string": "Test"

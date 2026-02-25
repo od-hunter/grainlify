@@ -149,6 +149,9 @@ const PROGRAM_INITIALIZED: Symbol = symbol_short!("ProgInit");
 const FUNDS_LOCKED: Symbol = symbol_short!("FundLock");
 const BATCH_PAYOUT: Symbol = symbol_short!("BatchPay");
 const PAYOUT: Symbol = symbol_short!("Payout");
+const DEPENDENCY_CREATED: Symbol = symbol_short!("dep_add");
+const DEPENDENCY_CLEARED: Symbol = symbol_short!("dep_clr");
+const DEPENDENCY_STATUS_UPDATED: Symbol = symbol_short!("dep_sts");
 
 // Storage keys
 const PROGRAM_DATA: Symbol = symbol_short!("ProgData");
@@ -612,6 +615,15 @@ pub struct ProgramScheduleReleased {
     pub release_type: ReleaseType,
 }
 
+/// Dependency resolution status for a program or external escrow identifier.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DependencyStatus {
+    Pending,
+    Completed,
+    Failed,
+}
+
 /// Complete program state and configuration.
 ///
 /// # Fields
@@ -672,6 +684,57 @@ pub enum DataKey {
     ReleaseSchedule(String, u64), // program_id, schedule_id -> ProgramReleaseSchedule
     ReleaseHistory(String), // program_id -> Vec<ProgramReleaseHistory>
     NextScheduleId(String), // program_id -> next schedule_id
+    ProgramDependencies(String), // program_id -> Vec<dependency_id>
+    DependencyStatus(String), // dependency_id -> DependencyStatus
+}
+
+fn vec_contains(values: &Vec<String>, target: &String) -> bool {
+    for value in values.iter() {
+        if value == *target {
+            return true;
+        }
+    }
+    false
+}
+
+fn get_program_dependencies_internal(env: &Env, program_id: &String) -> Vec<String> {
+    env.storage()
+        .instance()
+        .get(&DataKey::ProgramDependencies(program_id.clone()))
+        .unwrap_or(vec![env])
+}
+
+fn dependency_status_internal(env: &Env, dependency_id: &String) -> DependencyStatus {
+    env.storage()
+        .instance()
+        .get(&DataKey::DependencyStatus(dependency_id.clone()))
+        .unwrap_or(DependencyStatus::Pending)
+}
+
+fn path_exists_to_target(
+    env: &Env,
+    from_program: &String,
+    target_program: &String,
+    visited: &mut Vec<String>,
+) -> bool {
+    if *from_program == *target_program {
+        return true;
+    }
+    if vec_contains(visited, from_program) {
+        return false;
+    }
+
+    visited.push_back(from_program.clone());
+    let deps = get_program_dependencies_internal(env, from_program);
+    for dep in deps.iter() {
+        if env.storage().instance().has(&DataKey::Program(dep.clone()))
+            && path_exists_to_target(env, &dep, target_program, visited)
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 // ============================================================================
@@ -804,6 +867,14 @@ impl ProgramEscrowContract {
 
         // Store program data
         env.storage().instance().set(&program_key, &program_data);
+        let empty_dependencies: Vec<String> = vec![&env];
+        env.storage()
+            .instance()
+            .set(&DataKey::ProgramDependencies(program_id.clone()), &empty_dependencies);
+        env.storage().instance().set(
+            &DataKey::DependencyStatus(program_id.clone()),
+            &DependencyStatus::Pending,
+        );
 
         // Update registry
         let mut registry: Vec<String> = env
@@ -886,6 +957,174 @@ impl ProgramEscrowContract {
     pub fn program_exists(env: Env, program_id: String) -> bool {
         let program_key = DataKey::Program(program_id);
         env.storage().instance().has(&program_key)
+    }
+
+    fn assert_dependencies_satisfied(env: &Env, program_id: &String) {
+        let dependencies = get_program_dependencies_internal(env, program_id);
+        for dependency_id in dependencies.iter() {
+            match dependency_status_internal(env, &dependency_id) {
+                DependencyStatus::Completed => {}
+                DependencyStatus::Pending => panic!("Dependency not satisfied"),
+                DependencyStatus::Failed => panic!("Dependency failed"),
+            }
+        }
+    }
+
+    /// Defines explicit dependencies for a program.
+    ///
+    /// Dependencies can point to:
+    /// - another registered program id; or
+    /// - an externally managed dependency id with a pre-registered status.
+    ///
+    /// Cycle checks are applied for program-to-program edges.
+    pub fn set_program_dependencies(
+        env: Env,
+        program_id: String,
+        dependency_ids: Vec<String>,
+    ) -> Vec<String> {
+        let program_key = DataKey::Program(program_id.clone());
+        let program_data: ProgramData = env
+            .storage()
+            .instance()
+            .get(&program_key)
+            .unwrap_or_else(|| panic!("Program not found"));
+
+        program_data.authorized_payout_key.require_auth();
+
+        let old_dependencies = get_program_dependencies_internal(&env, &program_id);
+        let mut validated_dependencies = vec![&env];
+
+        for dependency_id in dependency_ids.iter() {
+            if dependency_id.len() == 0 {
+                panic!("Dependency id cannot be empty");
+            }
+            if dependency_id == program_id {
+                panic!("Program cannot depend on itself");
+            }
+            if vec_contains(&validated_dependencies, &dependency_id) {
+                panic!("Duplicate dependency");
+            }
+
+            let is_program_dependency = env
+                .storage()
+                .instance()
+                .has(&DataKey::Program(dependency_id.clone()));
+            let is_registered_external = env
+                .storage()
+                .instance()
+                .has(&DataKey::DependencyStatus(dependency_id.clone()));
+            if !is_program_dependency && !is_registered_external {
+                panic!("Dependency not registered");
+            }
+
+            if is_program_dependency {
+                let mut visited = Vec::new(&env);
+                if path_exists_to_target(&env, &dependency_id, &program_id, &mut visited) {
+                    panic!("Dependency cycle detected");
+                }
+            }
+
+            validated_dependencies.push_back(dependency_id.clone());
+        }
+
+        env.storage().instance().set(
+            &DataKey::ProgramDependencies(program_id.clone()),
+            &validated_dependencies,
+        );
+
+        for dependency_id in validated_dependencies.iter() {
+            if !vec_contains(&old_dependencies, &dependency_id) {
+                env.events().publish(
+                    (DEPENDENCY_CREATED,),
+                    (program_id.clone(), dependency_id.clone()),
+                );
+            }
+        }
+        for dependency_id in old_dependencies.iter() {
+            if !vec_contains(&validated_dependencies, &dependency_id) {
+                env.events().publish(
+                    (DEPENDENCY_CLEARED,),
+                    (program_id.clone(), dependency_id.clone()),
+                );
+            }
+        }
+
+        validated_dependencies
+    }
+
+    /// Clears all dependencies for a program.
+    pub fn clear_program_dependencies(env: Env, program_id: String) {
+        let program_key = DataKey::Program(program_id.clone());
+        let program_data: ProgramData = env
+            .storage()
+            .instance()
+            .get(&program_key)
+            .unwrap_or_else(|| panic!("Program not found"));
+
+        program_data.authorized_payout_key.require_auth();
+
+        let old_dependencies = get_program_dependencies_internal(&env, &program_id);
+        let empty_dependencies: Vec<String> = vec![&env];
+        env.storage()
+            .instance()
+            .set(&DataKey::ProgramDependencies(program_id.clone()), &empty_dependencies);
+
+        for dependency_id in old_dependencies.iter() {
+            env.events().publish(
+                (DEPENDENCY_CLEARED,),
+                (program_id.clone(), dependency_id.clone()),
+            );
+        }
+    }
+
+    /// Reads all dependencies configured for a program.
+    pub fn get_program_dependencies(env: Env, program_id: String) -> Vec<String> {
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::Program(program_id.clone()))
+        {
+            panic!("Program not found");
+        }
+        get_program_dependencies_internal(&env, &program_id)
+    }
+
+    /// Updates dependency status.
+    ///
+    /// For registered programs, only that program's authorized payout key can update status.
+    /// For external dependency ids, anti-abuse admin authorization is required.
+    pub fn set_dependency_status(env: Env, dependency_id: String, status: DependencyStatus) {
+        if dependency_id.len() == 0 {
+            panic!("Dependency id cannot be empty");
+        }
+
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::Program(dependency_id.clone()))
+        {
+            let program_data: ProgramData = env
+                .storage()
+                .instance()
+                .get(&DataKey::Program(dependency_id.clone()))
+                .unwrap();
+            program_data.authorized_payout_key.require_auth();
+        } else {
+            let admin = anti_abuse::get_admin(&env)
+                .unwrap_or_else(|| panic!("Admin not set for external dependency status update"));
+            admin.require_auth();
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::DependencyStatus(dependency_id.clone()), &status.clone());
+        env.events()
+            .publish((DEPENDENCY_STATUS_UPDATED,), (dependency_id, status));
+    }
+
+    /// Reads dependency status; defaults to pending if no explicit status exists.
+    pub fn get_dependency_status(env: Env, dependency_id: String) -> DependencyStatus {
+        dependency_status_internal(&env, &dependency_id)
     }
 
     // ========================================================================
@@ -975,7 +1214,6 @@ impl ProgramEscrowContract {
         // Apply rate limiting
         anti_abuse::check_rate_limit(&env, env.current_contract_address());
 
-        let start = env.ledger().timestamp();
         let caller = env.current_contract_address();
 
         // Validate amount
@@ -1157,6 +1395,8 @@ impl ProgramEscrowContract {
             .get(&program_key)
             .unwrap_or_else(|| panic!("Program not found"));
 
+        Self::assert_dependencies_satisfied(&env, &program_id);
+
         // Apply rate limiting to the authorized payout key
         anti_abuse::check_rate_limit(&env, program_data.authorized_payout_key.clone());
 
@@ -1333,6 +1573,8 @@ impl ProgramEscrowContract {
             .instance()
             .get(&program_key)
             .unwrap_or_else(|| panic!("Program not found"));
+
+        Self::assert_dependencies_satisfied(&env, &program_id);
 
         program_data.authorized_payout_key.require_auth();
         // Apply rate limiting to the authorized payout key
@@ -1601,6 +1843,8 @@ impl ProgramEscrowContract {
             .get(&program_key)
             .unwrap_or_else(|| panic!("Program not found"));
 
+        Self::assert_dependencies_satisfied(&env, &program_id);
+
         // Get schedule
         if !env
             .storage()
@@ -1735,6 +1979,8 @@ impl ProgramEscrowContract {
             .instance()
             .get(&program_key)
             .unwrap_or_else(|| panic!("Program not found"));
+
+        Self::assert_dependencies_satisfied(&env, &program_id);
 
         // Apply rate limiting to the authorized payout key
         anti_abuse::check_rate_limit(&env, program_data.authorized_payout_key.clone());
@@ -2212,7 +2458,7 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
-        token, Address, Env, String, Vec,
+        token, Address, Env, String,
     };
 
     // Test helper to create a mock token contract
@@ -2773,6 +3019,127 @@ mod test {
 
         let prog_id = String::from_str(&env, "DoesNotExist");
         client.get_program_info(&prog_id);
+    }
+
+    #[test]
+    fn test_dependency_gated_release_flow() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_admin = Address::generate(&env);
+        let token_client = create_token_contract(&env, &token_admin);
+        let token_asset = token::StellarAssetClient::new(&env, &token_client.address);
+
+        let dep_backend = Address::generate(&env);
+        let target_backend = Address::generate(&env);
+        let dependency_program = String::from_str(&env, "dependency-program");
+        let target_program = String::from_str(&env, "target-program");
+        let winner = Address::generate(&env);
+        let amount = 10_000_000i128;
+
+        token_asset.mint(&token_admin, &amount);
+        token_client.transfer(&token_admin, &contract_id, &amount);
+
+        client.initialize_program(&dependency_program, &dep_backend, &token_client.address);
+        client.initialize_program(&target_program, &target_backend, &token_client.address);
+        client.lock_program_funds(&target_program, &amount);
+        client.create_program_release_schedule(&target_program, &amount, &1000, &winner);
+
+        let dependencies = soroban_sdk::vec![&env, dependency_program.clone()];
+        client.set_program_dependencies(&target_program, &dependencies);
+
+        env.ledger().set_timestamp(1001);
+        let blocked = client.try_release_prog_schedule_automatic(&target_program, &1);
+        assert!(blocked.is_err());
+
+        client.set_dependency_status(&dependency_program, &DependencyStatus::Completed);
+        client.release_prog_schedule_automatic(&target_program, &1);
+
+        let schedule = client.get_program_release_schedule(&target_program, &1);
+        assert!(schedule.released);
+    }
+
+    #[test]
+    #[should_panic(expected = "Dependency failed")]
+    fn test_dependency_failed_blocks_release() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_admin = Address::generate(&env);
+        let token_client = create_token_contract(&env, &token_admin);
+        let token_asset = token::StellarAssetClient::new(&env, &token_client.address);
+
+        let dep_backend = Address::generate(&env);
+        let target_backend = Address::generate(&env);
+        let dependency_program = String::from_str(&env, "dependency-failed");
+        let target_program = String::from_str(&env, "target-failed");
+        let winner = Address::generate(&env);
+        let amount = 5_000_000i128;
+
+        token_asset.mint(&token_admin, &amount);
+        token_client.transfer(&token_admin, &contract_id, &amount);
+
+        client.initialize_program(&dependency_program, &dep_backend, &token_client.address);
+        client.initialize_program(&target_program, &target_backend, &token_client.address);
+        client.lock_program_funds(&target_program, &amount);
+        client.create_program_release_schedule(&target_program, &amount, &1000, &winner);
+        client.set_program_dependencies(
+            &target_program,
+            &soroban_sdk::vec![&env, dependency_program.clone()],
+        );
+
+        client.set_dependency_status(&dependency_program, &DependencyStatus::Failed);
+        env.ledger().set_timestamp(1001);
+        client.release_prog_schedule_automatic(&target_program, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Dependency cycle detected")]
+    fn test_dependency_cycle_rejection() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let token = Address::generate(&env);
+        let program_a = String::from_str(&env, "cycle-a");
+        let program_b = String::from_str(&env, "cycle-b");
+
+        client.initialize_program(&program_a, &backend_a, &token);
+        client.initialize_program(&program_b, &backend_b, &token);
+        client.set_program_dependencies(&program_a, &soroban_sdk::vec![&env, program_b.clone()]);
+        client.set_program_dependencies(&program_b, &soroban_sdk::vec![&env, program_a.clone()]);
+    }
+
+    #[test]
+    fn test_dependency_events_created_and_cleared() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let token = Address::generate(&env);
+        let program_a = String::from_str(&env, "event-a");
+        let program_b = String::from_str(&env, "event-b");
+
+        client.initialize_program(&program_a, &backend_a, &token);
+        client.initialize_program(&program_b, &backend_b, &token);
+
+        client.set_program_dependencies(&program_a, &soroban_sdk::vec![&env, program_b.clone()]);
+        let dependencies = client.get_program_dependencies(&program_a);
+        assert_eq!(dependencies.len(), 1);
+
+        client.clear_program_dependencies(&program_a);
+        let cleared_dependencies = client.get_program_dependencies(&program_a);
+        assert_eq!(cleared_dependencies.len(), 0);
     }
 
     // ========================================================================

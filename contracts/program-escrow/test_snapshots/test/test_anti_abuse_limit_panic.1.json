@@ -373,6 +373,44 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "DependencyStatus"
+                            },
+                            {
+                              "string": "P1"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "Pending"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "DependencyStatus"
+                            },
+                            {
+                              "string": "P2"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "Pending"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Program"
                             },
                             {
@@ -507,6 +545,36 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ProgramDependencies"
+                            },
+                            {
+                              "string": "P1"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ProgramDependencies"
+                            },
+                            {
+                              "string": "P2"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
                         }
                       }
                     ]
@@ -1269,7 +1337,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Rate limit exceeded' from contract function 'Symbol(obj#323)'"
+                  "string": "caught panic 'Rate limit exceeded' from contract function 'Symbol(obj#363)'"
                 },
                 {
                   "string": "P3"

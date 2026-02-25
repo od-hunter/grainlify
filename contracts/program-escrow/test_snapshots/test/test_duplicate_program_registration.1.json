@@ -294,6 +294,25 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "DependencyStatus"
+                            },
+                            {
+                              "string": "Hackathon2024"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "Pending"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Program"
                             },
                             {
@@ -358,6 +377,21 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ProgramDependencies"
+                            },
+                            {
+                              "string": "Hackathon2024"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
                         }
                       }
                     ]
@@ -755,7 +789,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Program already exists' from contract function 'Symbol(obj#109)'"
+                  "string": "caught panic 'Program already exists' from contract function 'Symbol(obj#121)'"
                 },
                 {
                   "string": "Hackathon2024"

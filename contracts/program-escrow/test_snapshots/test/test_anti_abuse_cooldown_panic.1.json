@@ -369,6 +369,25 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "DependencyStatus"
+                            },
+                            {
+                              "string": "P1"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "Pending"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Program"
                             },
                             {
@@ -433,6 +452,21 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ProgramDependencies"
+                            },
+                            {
+                              "string": "P1"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": []
                         }
                       }
                     ]
@@ -941,7 +975,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Operation in cooldown period' from contract function 'Symbol(obj#159)'"
+                  "string": "caught panic 'Operation in cooldown period' from contract function 'Symbol(obj#171)'"
                 },
                 {
                   "string": "P2"
