@@ -398,11 +398,61 @@ pub fn get_error_log(env: &Env) -> soroban_sdk::Vec<ErrorEntry> {
 pub struct RetryConfig {
     /// Maximum number of attempts (1 = no retry).
     pub max_attempts: u32,
+    /// Initial backoff delay in ledger timestamps (0 = no delay).
+    pub initial_backoff: u64,
+    /// Backoff multiplier for exponential backoff (1 = constant delay).
+    pub backoff_multiplier: u32,
+    /// Maximum backoff delay cap in ledger timestamps.
+    pub max_backoff: u64,
 }
 
 impl RetryConfig {
     pub fn default() -> Self {
-        RetryConfig { max_attempts: 3 }
+        RetryConfig {
+            max_attempts: 3,
+            initial_backoff: 0,
+            backoff_multiplier: 1,
+            max_backoff: 0,
+        }
+    }
+
+    /// Aggressive retry policy: more attempts, minimal backoff.
+    pub fn aggressive() -> Self {
+        RetryConfig {
+            max_attempts: 5,
+            initial_backoff: 1,
+            backoff_multiplier: 1,
+            max_backoff: 5,
+        }
+    }
+
+    /// Conservative retry policy: fewer attempts, exponential backoff.
+    pub fn conservative() -> Self {
+        RetryConfig {
+            max_attempts: 3,
+            initial_backoff: 10,
+            backoff_multiplier: 2,
+            max_backoff: 100,
+        }
+    }
+
+    /// Exponential backoff policy: moderate attempts, strong exponential growth.
+    pub fn exponential() -> Self {
+        RetryConfig {
+            max_attempts: 4,
+            initial_backoff: 5,
+            backoff_multiplier: 3,
+            max_backoff: 200,
+        }
+    }
+
+    /// Compute the backoff delay for a given attempt number (0-indexed).
+    pub fn compute_backoff(&self, attempt: u32) -> u64 {
+        if self.initial_backoff == 0 {
+            return 0;
+        }
+        let delay = self.initial_backoff * (self.backoff_multiplier.pow(attempt) as u64);
+        delay.min(self.max_backoff)
     }
 }
 
@@ -413,6 +463,7 @@ pub struct RetryResult {
     pub succeeded: bool,
     pub attempts: u32,
     pub final_error: u32, // ERR_NONE if succeeded
+    pub total_delay: u64,  // Total backoff delay accumulated
 }
 
 /// Execute a fallible operation with retry, integrated with the circuit breaker.
@@ -441,15 +492,26 @@ where
 {
     let mut attempts = 0u32;
     let mut last_error = ERR_NONE;
+    let mut total_delay = 0u64;
 
-    for _ in 0..config.max_attempts {
+    for attempt_idx in 0..config.max_attempts {
         // Check circuit before each attempt
         if let Err(e) = check_and_allow(env) {
             return RetryResult {
                 succeeded: false,
                 attempts,
                 final_error: e,
+                total_delay,
             };
+        }
+
+        // Apply backoff delay before retry (skip on first attempt)
+        if attempt_idx > 0 {
+            let delay = config.compute_backoff(attempt_idx - 1);
+            total_delay += delay;
+            // In a real implementation, we would wait here.
+            // For testing, we just track the delay.
+            // env.ledger().set_timestamp(env.ledger().timestamp() + delay);
         }
 
         attempts += 1;
@@ -460,6 +522,7 @@ where
                     succeeded: true,
                     attempts,
                     final_error: ERR_NONE,
+                    total_delay,
                 };
             }
             Err(code) => {
@@ -473,6 +536,7 @@ where
         succeeded: false,
         attempts,
         final_error: last_error,
+        total_delay,
     }
 }
 
@@ -485,4 +549,43 @@ fn emit_circuit_event(env: &Env, event_type: soroban_sdk::Symbol, value: u32) {
         (symbol_short!("circuit"), event_type),
         (value, env.ledger().timestamp()),
     );
+}
+
+// ─────────────────────────────────────────────────────────
+// Invariant Verification
+// ─────────────────────────────────────────────────────────
+
+/// Verifies that the circuit breaker state is internally consistent.
+pub fn verify_circuit_invariants(env: &Env) -> bool {
+    let status = get_status(env);
+    let config = get_config(env);
+
+    match status.state {
+        CircuitState::Open => {
+            // Invariant: In Open state, opened_at must be non-zero
+            if status.opened_at == 0 {
+                return false;
+            }
+            // Invariant: In Open state, failure_count should be >= threshold (unless emergency opened)
+            // Note: We'll allow emergency open, so we don't strictly check threshold here
+            // but we could check if failure_count + emergency_flag is valid.
+        }
+        CircuitState::Closed => {
+            // Invariant: In Closed state, opened_at must be 0
+            if status.opened_at != 0 {
+                return false;
+            }
+            // Invariant: In Closed state, failure_count should be < threshold
+            if status.failure_count >= config.failure_threshold {
+                return false;
+            }
+        }
+        CircuitState::HalfOpen => {
+            // Invariant: success_count should be < success_threshold
+            if status.success_count >= config.success_threshold {
+                return false;
+            }
+        }
+    }
+    true
 }

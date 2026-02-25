@@ -116,7 +116,7 @@
                     "storage": [
                       {
                         "key": {
-                          "symbol": "FeeConf"
+                          "symbol": "FeeCfg"
                         },
                         "val": {
                           "map": [
@@ -163,7 +163,7 @@
                       },
                       {
                         "key": {
-                          "symbol": "ProgReg2"
+                          "symbol": "ProgReg"
                         },
                         "val": {
                           "vec": [
@@ -192,6 +192,17 @@
                               },
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "initial_liquidity"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
                               }
                             },
                             {
@@ -341,7 +352,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "PrgReg"
+                "symbol": "ProgRgd"
               }
             ],
             "data": {

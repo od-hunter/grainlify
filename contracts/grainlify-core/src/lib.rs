@@ -152,15 +152,18 @@
 
 #![no_std]
 
+pub mod asset;
+pub mod nonce;
+
 mod governance;
 mod multisig;
 pub use governance::{
     Error as GovError, GovernanceConfig, Proposal, ProposalStatus, Vote, VoteType, VotingScheme,
 };
 use multisig::MultiSig;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
-};
+#[cfg(feature = "contract")]
+use soroban_sdk::{contract, contractimpl};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec};
 
 // ==================== MONITORING MODULE ====================
 mod monitoring {
@@ -348,13 +351,31 @@ mod monitoring {
             last_called: last,
         }
     }
+
+    // NEW: verify_invariants for state consistency
+    pub fn verify_invariants(env: &Env) -> bool {
+        let analytics = get_analytics(env);
+        // Invariant: total errors cannot exceed total operations
+        if analytics.error_count > analytics.operation_count {
+            return false;
+        }
+        // Invariant: total operations should be >= unique users
+        if analytics.operation_count < analytics.unique_users {
+            return false;
+        }
+        true
+    }
 }
+
+#[cfg(test)]
+mod test_core_monitoring;
 // ==================== END MONITORING MODULE ====================
 
 // ============================================================================
 // Contract Definition
 // ============================================================================
 
+#[cfg(feature = "contract")]
 #[contract]
 pub struct GrainlifyContract;
 
@@ -410,6 +431,7 @@ enum DataKey {
 ///
 /// # Usage
 /// Set during initialization and can be updated via `set_version()`.
+#[cfg(feature = "contract")]
 const VERSION: u32 = 2;
 
 // ============================================================================
@@ -501,6 +523,7 @@ pub struct MigrationEvent {
 ///   --admin GADMIN_ADDRESS
 /// ```
 
+#[cfg(feature = "contract")]
 #[contractimpl]
 impl GrainlifyContract {
     /// Initializes the contract with multisig configuration.
@@ -675,7 +698,6 @@ impl GrainlifyContract {
     /// # Panics
     /// * If admin address is not set (contract not initialized)
     /// * If caller is not the admin
-
     /// Executes an upgrade proposal that has met the multisig threshold.
     ///
     /// # Arguments
@@ -869,7 +891,6 @@ impl GrainlifyContract {
     /// # Panics
     /// * If admin address is not set (contract not initialized)
     /// * If caller is not the admin
-
     pub fn set_version(env: Env, new_version: u32) {
         let start = env.ledger().timestamp();
 
@@ -1309,11 +1330,9 @@ mod test {
         let state = migration_state.unwrap();
         assert_eq!(state.from_version, 2);
         assert_eq!(state.to_version, 3);
-        assert!(state.migrated_at >= 0);
-
         // 6. Verify events emitted
         let events = env.events().all();
-        assert!(events.len() > 0);
+        assert!(!events.is_empty());
     }
 
     #[test]
@@ -1469,7 +1488,6 @@ mod test {
         assert_eq!(state.to_version, 3);
         assert_eq!(state.migration_hash, hash);
         // Timestamp is set (may be 0 in test environment)
-        assert!(state.migrated_at >= 0);
     }
 
     #[test]
@@ -1490,7 +1508,7 @@ mod test {
         client.migrate(&3, &hash);
 
         // Verify auth was required
-        assert!(env.auths().len() > 0);
+        assert!(!env.auths().is_empty());
     }
 
     #[test]
@@ -1578,7 +1596,13 @@ mod test {
         assert_eq!(state.from_version, v_before);
         assert_eq!(state.to_version, 3);
     }
+    // Export WASM for testing upgrade/rollback scenarios
+    #[cfg(test)]
+    pub const WASM: &[u8] = include_bytes!("../target/wasm32v1-none/release/grainlify_core.wasm");
 
     #[cfg(test)]
     mod upgrade_rollback_tests;
 }
+
+#[cfg(test)]
+mod migration_hook_tests;
