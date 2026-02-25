@@ -71,6 +71,89 @@ impl EscrowContract {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
+        
+        // Initialize default tier limits and risk thresholds
+        let default_limits = TierLimits::default();
+        let default_thresholds = RiskThresholds::default();
+        env.storage().persistent().set(&DataKey::TierLimits, &default_limits);
+        env.storage().persistent().set(&DataKey::RiskThresholds, &default_thresholds);
+        
+        Ok(())
+    }
+
+    /// Set or update an authorized claim issuer (admin only)
+    pub fn set_authorized_issuer(
+        env: Env,
+        issuer: Address,
+        authorized: bool,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::AuthorizedIssuer(issuer.clone()), &authorized);
+
+        // Emit event for issuer management
+        env.events().publish(
+            (soroban_sdk::symbol_short!("issuer"), issuer.clone()),
+            if authorized { soroban_sdk::symbol_short!("add") } else { soroban_sdk::symbol_short!("remove") },
+        );
+
+        Ok(())
+    }
+
+    /// Configure tier-based transaction limits (admin only)
+    pub fn set_tier_limits(
+        env: Env,
+        unverified: i128,
+        basic: i128,
+        verified: i128,
+        premium: i128,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let limits = TierLimits {
+            unverified_limit: unverified,
+            basic_limit: basic,
+            verified_limit: verified,
+            premium_limit: premium,
+        };
+
+        env.storage().persistent().set(&DataKey::TierLimits, &limits);
+        Ok(())
+    }
+
+    /// Configure risk-based adjustments (admin only)
+    pub fn set_risk_thresholds(
+        env: Env,
+        high_risk_threshold: u32,
+        high_risk_multiplier: u32,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let thresholds = RiskThresholds {
+            high_risk_threshold,
+            high_risk_multiplier,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::RiskThresholds, &thresholds);
         Ok(())
     }
 

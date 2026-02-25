@@ -46,7 +46,7 @@
     - **Validates: Requirements 2.3**
 
 - [ ] 4. Implement issuer authorization management
-  - [ ] 4.1 Create set_authorized_issuer admin function
+  - [x] 4.1 Create set_authorized_issuer admin function
     - Implement function to add/remove authorized issuers
     - Require admin authentication
     - Store issuer authorization in persistent storage
@@ -64,7 +64,7 @@
     - **Property 4: Removed issuers cannot sign valid claims**
     - **Validates: Requirements 1.5**
 
-  - [ ] 4.5 Emit events for issuer management actions
+  - [x] 4.5 Emit events for issuer management actions
     - Create event for issuer addition/removal
     - Include issuer public key and action in event
     - _Requirements: 8.5_
@@ -125,13 +125,13 @@
     - **Validates: Requirements 8.1, 8.2**
 
 - [ ] 7. Implement tier limit configuration
-  - [ ] 7.1 Create set_tier_limits admin function
+  - [x] 7.1 Create set_tier_limits admin function
     - Implement function to configure limits for each tier
     - Require admin authentication
     - Store tier limits in persistent storage
     - _Requirements: 4.1-4.5_
 
-  - [ ] 7.2 Create set_risk_thresholds admin function
+  - [x] 7.2 Create set_risk_thresholds admin function
     - Implement function to configure risk thresholds and multipliers
     - Require admin authentication
     - Store risk thresholds in persistent storage
