@@ -1412,8 +1412,15 @@ impl ProgramEscrowContract {
             .unwrap_or_else(|| panic!("Program not initialized"));
 
         // Update balances
-        program_data.total_funds += amount;
-        program_data.remaining_balance += amount;
+        program_data.total_funds = program_data
+            .total_funds
+            .checked_add(amount)
+            .unwrap_or_else(|| panic!("Amount overflow on total_funds"));
+
+        program_data.remaining_balance = program_data
+            .remaining_balance
+            .checked_add(amount)
+            .unwrap_or_else(|| panic!("Amount overflow on remaining_balance"));
 
         // Store updated data
         env.storage().instance().set(&PROGRAM_DATA, &program_data);
@@ -1733,7 +1740,10 @@ impl ProgramEscrowContract {
 
         // Update program data
         let mut updated_data = program_data.clone();
-        updated_data.remaining_balance -= total_payout; // Total includes fees
+        updated_data.remaining_balance = updated_data
+            .remaining_balance
+            .checked_sub(total_payout)
+            .unwrap_or_else(|| panic!("Insufficient remaining balance"));
         updated_data.payout_history = updated_history;
 
         // Store updated data
@@ -1857,7 +1867,10 @@ impl ProgramEscrowContract {
 
         // Update program data
         let mut updated_data = program_data.clone();
-        updated_data.remaining_balance -= amount; // Total amount (includes fee)
+        updated_data.remaining_balance = updated_data
+            .remaining_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic!("Insufficient remaining balance"));
         updated_data.payout_history = updated_history;
 
         // Store updated data
@@ -1953,10 +1966,12 @@ impl ProgramEscrowContract {
             panic!("Amount must be greater than zero");
         }
 
-        // Validate timestamp
-        if release_timestamp <= env.ledger().timestamp() {
-            panic!("Release timestamp must be in the future");
-        }
+    env.storage().instance().set(&SCHEDULES, &schedules);
+    env.storage()
+        .instance()
+        let next_id = schedule_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic!("Schedule ID overflow"));
 
         // Check sufficient remaining balance
         let scheduled_total = get_program_total_scheduled_amount(&env, &program_id);
@@ -2655,12 +2670,19 @@ impl ProgramEscrowContract {
             None => anti_abuse::clear_admin(&env),
         }
 
-        env.storage().instance().set(&DataKey::IsPaused, &snapshot.is_paused);
-
-        env.events().publish(
-            (symbol_short!("cfg_snap"), symbol_short!("restore")),
-            (snapshot_id, env.ledger().timestamp()),
-        );
+    ProgramAggregateStats {
+        total_funds: program_data.total_funds,
+        remaining_balance: program_data.remaining_balance,
+        total_paid_out: program_data
+                            .total_funds
+                            .checked_sub(program_data.remaining_balance)
+                            .unwrap_or_else(|| panic!("Arithmetic error in total_paid_out"))
+        authorized_payout_key: program_data.authorized_payout_key.clone(),
+        payout_history: program_data.payout_history.clone(),
+        token_address: program_data.token_address.clone(),
+        payout_count: program_data.payout_history.len(),
+        scheduled_count,
+        released_count,
     }
 
     // ========================================================================
@@ -2846,7 +2868,7 @@ fn get_program_total_scheduled_amount(env: &Env, program_id: &String) -> i128 {
                 .get(&DataKey::ReleaseSchedule(program_id.clone(), schedule_id))
                 .unwrap();
             if !schedule.released {
-                total += schedule.amount;
+                total = total.checked_add(schedule.amount).unwrap_or_else(|| panic!("Scheduled amount overflow"));
             }
         }
     }
