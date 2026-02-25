@@ -31,7 +31,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-mod monitoring {
+pub(crate) mod monitoring {
     use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
     // Storage keys
@@ -46,6 +46,7 @@ mod monitoring {
     #[contracttype]
     #[derive(Clone, Debug)]
     pub struct OperationMetric {
+        pub version: u32,
         pub operation: Symbol,
         pub caller: Address,
         pub timestamp: u64,
@@ -56,6 +57,7 @@ mod monitoring {
     #[contracttype]
     #[derive(Clone, Debug)]
     pub struct PerformanceMetric {
+        pub version: u32,
         pub function: Symbol,
         pub duration: u64,
         pub timestamp: u64,
@@ -118,6 +120,7 @@ mod monitoring {
         env.events().publish(
             (symbol_short!("metric"), symbol_short!("op")),
             OperationMetric {
+                version: super::EVENT_VERSION_V2,
                 operation,
                 caller,
                 timestamp: env.ledger().timestamp(),
@@ -143,6 +146,7 @@ mod monitoring {
         env.events().publish(
             (symbol_short!("metric"), symbol_short!("perf")),
             PerformanceMetric {
+                version: super::EVENT_VERSION_V2,
                 function,
                 duration,
                 timestamp: env.ledger().timestamp(),
@@ -1365,6 +1369,19 @@ impl BountyEscrowContract {
         amount: i128,
         deadline: u64,
     ) -> Result<(), Error> {
+        let res =
+            Self::lock_funds_logic(env.clone(), depositor.clone(), bounty_id, amount, deadline);
+        monitoring::track_operation(&env, symbol_short!("lock"), depositor, res.is_ok());
+        res
+    }
+
+    fn lock_funds_logic(
+        env: Env,
+        depositor: Address,
+        bounty_id: u64,
+        amount: i128,
+        deadline: u64,
+    ) -> Result<(), Error> {
         // GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
 
@@ -1471,6 +1488,12 @@ impl BountyEscrowContract {
     /// Protected by the shared reentrancy guard. Escrow state is updated
     /// to `Released` *before* the outbound token transfer (CEI pattern).
     pub fn release_funds(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
+        let res = Self::release_funds_logic(env.clone(), bounty_id, contributor.clone());
+        monitoring::track_operation(&env, symbol_short!("release"), contributor, res.is_ok());
+        res
+    }
+
+    fn release_funds_logic(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
         if Self::check_paused(&env, symbol_short!("release")) {
             return Err(Error::FundsPaused);
         }
@@ -2044,6 +2067,17 @@ impl BountyEscrowContract {
     /// history, and approval cleanup are performed *before* the outbound
     /// token transfer (CEI pattern).
     pub fn refund(env: Env, bounty_id: u64) -> Result<(), Error> {
+        let res = Self::refund_logic(env.clone(), bounty_id);
+        monitoring::track_operation(
+            &env,
+            symbol_short!("refund"),
+            env.current_contract_address(),
+            res.is_ok(),
+        );
+        res
+    }
+
+    fn refund_logic(env: Env, bounty_id: u64) -> Result<(), Error> {
         if Self::check_paused(&env, symbol_short!("refund")) {
             return Err(Error::FundsPaused);
         }
@@ -3319,6 +3353,22 @@ impl BountyEscrowContract {
         Ok(())
     }
 
+    pub fn get_analytics(env: Env) -> monitoring::Analytics {
+        monitoring::get_analytics(&env)
+    }
+
+    pub fn health_check(env: Env) -> monitoring::HealthStatus {
+        monitoring::health_check(&env)
+    }
+
+    pub fn get_state_snapshot(env: Env) -> monitoring::StateSnapshot {
+        monitoring::get_state_snapshot(&env)
+    }
+
+    pub fn get_performance_stats(env: Env, function_name: Symbol) -> monitoring::PerformanceStats {
+        monitoring::get_performance_stats(&env, function_name)
+    }
+
     pub fn get_metadata(env: Env, bounty_id: u64) -> Result<EscrowMetadata, Error> {
         env.storage()
             .persistent()
@@ -3711,6 +3761,7 @@ mod test;
 mod test_analytics_monitoring;
 #[cfg(test)]
 mod test_auto_refund_permissions;
+// #[cfg(test)]
 #[cfg(test)]
 // Temporarily disabled: this suite targets a different blacklist API surface
 // (`initialize`, `set_blacklist`, `set_whitelist_mode`) than this contract exposes.
