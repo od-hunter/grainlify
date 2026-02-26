@@ -271,3 +271,89 @@ pub fn emit_capability_revoked(env: &Env, event: CapabilityRevoked) {
     let topics = (symbol_short!("cap_rev"), event.capability_id);
     env.events().publish(topics, event);
 }
+
+// ==================== Event Batching (Issue #676) ====================
+// Compact action summary for batch events. Indexers can decode a single
+// EventBatch instead of N individual events during high-volume periods.
+// action_type: 1=Lock, 2=Release, 3=Refund (u32 for Soroban contracttype)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionSummary {
+    pub bounty_id: u64,
+    pub action_type: u32,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EventBatch {
+    pub version: u32,
+    pub batch_type: u32, // 1=lock, 2=release
+    pub actions: soroban_sdk::Vec<ActionSummary>,
+    pub total_amount: i128,
+    pub timestamp: u64,
+}
+
+pub fn emit_event_batch(env: &Env, event: EventBatch) {
+    let topics = (symbol_short!("ev_batch"), event.batch_type);
+    env.events().publish(topics, event.clone());
+}
+
+// ==================== Owner Lock (Issue #675) ====================
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowLockedEvent {
+    pub bounty_id: u64,
+    pub locked_by: Address,
+    pub locked_until: Option<u64>,
+    pub reason: Option<soroban_sdk::String>,
+    pub timestamp: u64,
+}
+
+pub fn emit_escrow_locked(env: &Env, event: EscrowLockedEvent) {
+    let topics = (symbol_short!("esc_lock"), event.bounty_id);
+    env.events().publish(topics, event.clone());
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowUnlockedEvent {
+    pub bounty_id: u64,
+    pub unlocked_by: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_escrow_unlocked(env: &Env, event: EscrowUnlockedEvent) {
+    let topics = (symbol_short!("esc_unl"), event.bounty_id);
+    env.events().publish(topics, event.clone());
+}
+
+// ==================== Clone/Fork (Issue #678) ====================
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowClonedEvent {
+    pub source_bounty_id: u64,
+    pub new_bounty_id: u64,
+    pub new_owner: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_escrow_cloned(env: &Env, event: EscrowClonedEvent) {
+    let topics = (symbol_short!("esc_clone"), event.new_bounty_id);
+    env.events().publish(topics, event.clone());
+}
+
+// ==================== Archive on Completion (Issue #684) ====================
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowArchivedEvent {
+    pub bounty_id: u64,
+    pub reason: soroban_sdk::String, // e.g. "completed", "released", "refunded"
+    pub archived_at: u64,
+}
+
+pub fn emit_escrow_archived(env: &Env, event: EscrowArchivedEvent) {
+    let topics = (symbol_short!("esc_arch"), event.bounty_id);
+    env.events().publish(topics, event.clone());
+}
