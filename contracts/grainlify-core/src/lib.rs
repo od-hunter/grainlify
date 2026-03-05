@@ -160,6 +160,7 @@ use soroban_sdk::{
 pub mod asset;
 mod governance;
 pub mod nonce;
+pub mod pseudo_randomness;
 
 pub use governance::{
     Error as GovError, GovernanceConfig, Proposal, ProposalStatus, Vote, VoteType, VotingScheme,

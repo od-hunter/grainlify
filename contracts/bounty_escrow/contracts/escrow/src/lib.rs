@@ -7,6 +7,8 @@ mod test_metadata;
 
 mod test_cross_contract_interface;
 #[cfg(test)]
+mod test_deterministic_randomness;
+#[cfg(test)]
 mod test_multi_token_fees;
 #[cfg(test)]
 mod test_rbac;
@@ -19,19 +21,22 @@ mod test_maintenance_mode;
 
 use events::{
     emit_batch_funds_locked, emit_batch_funds_released, emit_bounty_initialized,
+    emit_deterministic_selection,
     emit_deprecation_state_changed, emit_funds_locked, emit_funds_locked_anon,
     emit_funds_refunded, emit_funds_released, emit_maintenance_mode_changed,
     emit_participant_filter_mode_changed, emit_risk_flags_updated,
     emit_ticket_claimed, emit_ticket_issued,
     BatchFundsLocked, BatchFundsReleased, BountyEscrowInitialized,
     ClaimCancelled, ClaimCreated, ClaimExecuted, DeprecationStateChanged,
+    DeterministicSelectionDerived,
     FundsLocked, FundsLockedAnon, FundsRefunded, FundsReleased,
     MaintenanceModeChanged, ParticipantFilterModeChanged,
     RiskFlagsUpdated, TicketClaimed, TicketIssued, EVENT_VERSION_V2,
 };
+use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, vec, Address, Env,
-    Symbol, Vec,
+    Bytes, BytesN, String, Symbol, Vec,
 };
 
 // ============================================================================
@@ -429,6 +434,10 @@ const BASIS_POINTS: i128 = 10_000;
 const MAX_FEE_RATE: i128 = 5_000; // 50% max fee
 const MAX_BATCH_SIZE: u32 = 20;
 
+extern crate grainlify_core;
+use grainlify_core::asset;
+use grainlify_core::pseudo_randomness;
+
 #[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -518,7 +527,7 @@ pub enum Error {
     NotAnonymousEscrow = 36,
     /// Use get_escrow_info_v2 for anonymous escrows
     UseGetEscrowInfoV2ForAnonymous = 37,
-
+    InvalidSelectionInput = 38,
 }
 
 pub const RISK_FLAG_HIGH_RISK: u32 = 1 << 0;
@@ -3834,6 +3843,257 @@ impl BountyEscrowContract {
             .persistent()
             .get(&DataKey::Metadata(bounty_id))
             .ok_or(Error::BountyNotFound)
+    }
+
+    fn build_claim_selection_context(
+        env: &Env,
+        bounty_id: u64,
+        amount: i128,
+        expires_at: u64,
+    ) -> Bytes {
+        let mut context = Bytes::new(env);
+        context.append(&env.current_contract_address().to_xdr(env));
+        context.append(&Bytes::from_array(env, &bounty_id.to_be_bytes()));
+        context.append(&Bytes::from_array(env, &amount.to_be_bytes()));
+        context.append(&Bytes::from_array(env, &expires_at.to_be_bytes()));
+        context.append(&Bytes::from_array(
+            env,
+            &env.ledger().timestamp().to_be_bytes(),
+        ));
+        let ticket_counter: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TicketCounter)
+            .unwrap_or(0);
+        context.append(&Bytes::from_array(env, &ticket_counter.to_be_bytes()));
+        context
+    }
+
+    /// Deterministically derive the winner index for claim ticket issuance.
+    ///
+    /// This is a pure/view helper that lets clients verify expected results
+    /// before issuing a ticket.
+    pub fn derive_claim_ticket_winner_index(
+        env: Env,
+        bounty_id: u64,
+        candidates: Vec<Address>,
+        amount: i128,
+        expires_at: u64,
+        external_seed: BytesN<32>,
+    ) -> Result<u32, Error> {
+        if candidates.is_empty() {
+            return Err(Error::InvalidSelectionInput);
+        }
+        let context = Self::build_claim_selection_context(&env, bounty_id, amount, expires_at);
+        let domain = Symbol::new(&env, "claim_prng_v1");
+        let selection = pseudo_randomness::derive_selection(
+            &env,
+            &domain,
+            &context,
+            &external_seed,
+            &candidates,
+        )
+        .ok_or(Error::InvalidSelectionInput)?;
+        Ok(selection.index)
+    }
+
+    /// Deterministically derive the winner address for claim ticket issuance.
+    pub fn derive_claim_ticket_winner(
+        env: Env,
+        bounty_id: u64,
+        candidates: Vec<Address>,
+        amount: i128,
+        expires_at: u64,
+        external_seed: BytesN<32>,
+    ) -> Result<Address, Error> {
+        let index = Self::derive_claim_ticket_winner_index(
+            env.clone(),
+            bounty_id,
+            candidates.clone(),
+            amount,
+            expires_at,
+            external_seed,
+        )?;
+        candidates.get(index).ok_or(Error::InvalidSelectionInput)
+    }
+
+    /// Deterministically select a winner from `candidates` and issue claim ticket.
+    ///
+    /// Security notes:
+    /// - Deterministic and verifiable from published inputs.
+    /// - Not unbiased randomness; callers can still influence context/seed choices.
+    pub fn issue_claim_ticket_deterministic(
+        env: Env,
+        bounty_id: u64,
+        candidates: Vec<Address>,
+        amount: i128,
+        expires_at: u64,
+        external_seed: BytesN<32>,
+    ) -> Result<u64, Error> {
+        if candidates.is_empty() {
+            return Err(Error::InvalidSelectionInput);
+        }
+
+        let context = Self::build_claim_selection_context(&env, bounty_id, amount, expires_at);
+        let domain = Symbol::new(&env, "claim_prng_v1");
+        let selection = pseudo_randomness::derive_selection(
+            &env,
+            &domain,
+            &context,
+            &external_seed,
+            &candidates,
+        )
+        .ok_or(Error::InvalidSelectionInput)?;
+
+        let selected = candidates
+            .get(selection.index)
+            .ok_or(Error::InvalidSelectionInput)?;
+
+        emit_deterministic_selection(
+            &env,
+            DeterministicSelectionDerived {
+                bounty_id,
+                selected_index: selection.index,
+                candidate_count: candidates.len(),
+                selected_beneficiary: selected.clone(),
+                seed_hash: selection.seed_hash,
+                winner_score: selection.winner_score,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Self::issue_claim_ticket(env, bounty_id, selected, amount, expires_at)
+    }
+
+    /// Issue a single-use claim ticket to a bounty winner (admin only)
+    ///
+    /// This creates a ticket that the beneficiary can use to claim their reward exactly once.
+    /// Tickets are bound to a specific address, amount, and expiry time.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `bounty_id` - ID of the bounty being claimed
+    /// * `beneficiary` - Address of the winner who will claim the reward
+    /// * `amount` - Amount to be claimed (in token units)
+    /// * `expires_at` - Unix timestamp when the ticket expires
+    ///
+    /// # Returns
+    /// * `Ok(ticket_id)` - The unique ticket ID for this claim
+    /// * `Err(Error::NotInitialized)` - Contract not initialized
+    /// * `Err(Error::Unauthorized)` - Caller is not admin
+    /// * `Err(Error::BountyNotFound)` - Bounty doesn't exist
+    /// * `Err(Error::InvalidDeadline)` - Expiry time is in the past
+    /// * `Err(Error::InvalidAmount)` - Amount is invalid or exceeds escrow amount
+    pub fn issue_claim_ticket(
+        env: Env,
+        bounty_id: u64,
+        beneficiary: Address,
+        amount: i128,
+        expires_at: u64,
+    ) -> Result<u64, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let escrow_amount: i128;
+        let escrow_status: EscrowStatus;
+        if env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            let escrow: Escrow = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Escrow(bounty_id))
+                .unwrap();
+            escrow_amount = escrow.amount;
+            escrow_status = escrow.status;
+        } else if env
+            .storage()
+            .persistent()
+            .has(&DataKey::EscrowAnon(bounty_id))
+        {
+            let anon: AnonymousEscrow = env
+                .storage()
+                .persistent()
+                .get(&DataKey::EscrowAnon(bounty_id))
+                .unwrap();
+            escrow_amount = anon.amount;
+            escrow_status = anon.status;
+        } else {
+            return Err(Error::BountyNotFound);
+        }
+
+        if escrow_status != EscrowStatus::Locked {
+            return Err(Error::FundsNotLocked);
+        }
+        if amount <= 0 || amount > escrow_amount {
+            return Err(Error::InvalidAmount);
+        }
+
+        let now = env.ledger().timestamp();
+        if expires_at <= now {
+            return Err(Error::InvalidDeadline);
+        }
+
+        let ticket_counter_key = DataKey::TicketCounter;
+        let mut ticket_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&ticket_counter_key)
+            .unwrap_or(0);
+        ticket_id += 1;
+        env.storage()
+            .persistent()
+            .set(&ticket_counter_key, &ticket_id);
+
+        let ticket = ClaimTicket {
+            ticket_id,
+            bounty_id,
+            beneficiary: beneficiary.clone(),
+            amount,
+            expires_at,
+            used: false,
+            issued_at: now,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ClaimTicket(ticket_id), &ticket);
+
+        let mut ticket_index: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ClaimTicketIndex)
+            .unwrap_or(Vec::new(&env));
+        ticket_index.push_back(ticket_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ClaimTicketIndex, &ticket_index);
+
+        let mut beneficiary_tickets: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BeneficiaryTickets(beneficiary.clone()))
+            .unwrap_or(Vec::new(&env));
+        beneficiary_tickets.push_back(ticket_id);
+        env.storage().persistent().set(
+            &DataKey::BeneficiaryTickets(beneficiary.clone()),
+            &beneficiary_tickets,
+        );
+
+        emit_ticket_issued(
+            &env,
+            TicketIssued {
+                ticket_id,
+                bounty_id,
+                beneficiary,
+                amount,
+                expires_at,
+                issued_at: now,
+            },
+        );
+
+        Ok(ticket_id)
     }
 
     pub fn set_escrow_risk_flags(

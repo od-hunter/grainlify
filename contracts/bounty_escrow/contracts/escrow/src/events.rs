@@ -167,6 +167,24 @@ pub struct ClaimCancelled {
     pub cancelled_by: Address,
 }
 
+/// Event emitted when deterministic pseudo-random winner selection is derived.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeterministicSelectionDerived {
+    pub bounty_id: u64,
+    pub selected_index: u32,
+    pub candidate_count: u32,
+    pub selected_beneficiary: Address,
+    pub seed_hash: BytesN<32>,
+    pub winner_score: BytesN<32>,
+    pub timestamp: u64,
+}
+
+pub fn emit_deterministic_selection(env: &Env, event: DeterministicSelectionDerived) {
+    let topics = (symbol_short!("prng_sel"), event.bounty_id);
+    env.events().publish(topics, event);
+}
+
 pub fn emit_pause_state_changed(env: &Env, event: crate::PauseStateChanged) {
     let topics = (symbol_short!("pause"), event.operation.clone());
     env.events().publish(topics, event);
